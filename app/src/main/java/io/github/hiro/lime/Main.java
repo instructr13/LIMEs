@@ -155,7 +155,11 @@ public class Main implements IXposedHookLoadPackage, IXposedHookInitPackageResou
 
         Constants.initializeHooks(lpparam);
         for (IHook hook : hooks) {
-            hook.hook(limeOptions, lpparam);
+            try {
+                hook.hook(limeOptions, lpparam);
+            } catch (Throwable t) {
+                XposedBridge.log("Lime: Hook failed: " + hook.getClass().getSimpleName() + " - " + t.getMessage());
+            }
         }
 
     }

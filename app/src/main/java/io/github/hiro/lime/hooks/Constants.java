@@ -394,6 +394,41 @@ public class Constants {
             ReactionList = new HookTarget("Vz.k", "");
 //skipMemoryCache
             Video = new HookTarget("jS.D", "");
+        } else if (isVersionInRange(versionName, "26.4.0", "26.5.0")) {
+
+            XposedBridge.log("26.4.0 Patched ");
+
+            USER_AGENT_HOOK = new HookTarget("s88.d", "i");
+            WEBVIEW_CLIENT_HOOK = new HookTarget("wt3.b", "onPageFinished");
+
+            MUTE_MESSAGE_HOOK = new HookTarget("l68.b", "F");
+            MARK_AS_READ_HOOK = new HookTarget("qn2.e$d", "run");
+            Archive = new HookTarget("nk1.y1", "invokeSuspend");
+
+            REQUEST_HOOK = new HookTarget("org.apache.thrift.o", "b");
+            RESPONSE_HOOK = new HookTarget("org.apache.thrift.o", "a");
+
+            RemoveVoiceRecord_Hook_a = new HookTarget("mc1.d", "run");
+
+            ChatRestore = new HookTarget("androidx.fragment.app.t", "onActivityResult");
+//jp.naver.gallery.viewer.SaveSingleMediaToDeviceViewModel
+            //getAllChatIds
+            PhotoSave = new HookTarget("qu7.i1", "");
+
+//VideoPlaybackSyncEvent(localMessageId
+            PhotoSave1 = new HookTarget("qu7.s1", "");
+
+            //DIRECTORY_PICTURES
+            PhotoSave2 = new HookTarget("op2.h", "");
+
+//com.linecorp.line.album.ui.viewmodel.FeedAlbumViewModel$downloadPhotoDirectly$1
+            //createAlbum
+            PhotoSave3 = new HookTarget("qg0.v1", "");
+
+            //reactionListModel
+            ReactionList = new HookTarget("la1.k", "");
+//skipMemoryCache
+            Video = new HookTarget("h88.j", "");
         }
 
     }

@@ -33,6 +33,8 @@ public class RemoveIcons implements IHook {
 
                         handleRemoveNewsOrCall(activity, isDarkMode);
 
+                        handleRemoveMini(activity, isDarkMode);
+
                         if (limeOptions.extendClickableArea.checked) {
                             int mainTabContainerResId = activity.getResources().getIdentifier("main_tab_container", "id", activity.getPackageName());
                             ViewGroup mainTabContainer = activity.findViewById(mainTabContainerResId);
@@ -131,6 +133,35 @@ public class RemoveIcons implements IHook {
             }
         }
     }
+    private void handleRemoveMini(Activity activity, boolean isDarkMode) {
+        if (limeOptions.removeMini.checked) {
+            if (!limeOptions.distributeEvenly.checked && limeOptions.DarkColor.checked) {
+                if (isDarkMode) {
+                    setViewProperties(activity, "bnb_mini", Color.BLACK);
+                    setViewProperties(activity, "bnb_mini_spacer", Color.BLACK);
+                } else {
+                    int miniResId = activity.getResources().getIdentifier("bnb_mini", "id", activity.getPackageName());
+                    View miniView = activity.findViewById(miniResId);
+                    if (miniView != null) miniView.setVisibility(View.GONE);
+                    if (limeOptions.distributeEvenly.checked) {
+                        int miniSpacerResId = activity.getResources().getIdentifier("bnb_mini_spacer", "id", activity.getPackageName());
+                        View spacerView = activity.findViewById(miniSpacerResId);
+                        if (spacerView != null) spacerView.setVisibility(View.GONE);
+                    }
+                }
+            } else {
+                int miniResId = activity.getResources().getIdentifier("bnb_mini", "id", activity.getPackageName());
+                View miniView = activity.findViewById(miniResId);
+                if (miniView != null) miniView.setVisibility(View.GONE);
+                if (limeOptions.distributeEvenly.checked) {
+                    int miniSpacerResId = activity.getResources().getIdentifier("bnb_mini_spacer", "id", activity.getPackageName());
+                    View spacerView = activity.findViewById(miniSpacerResId);
+                    if (spacerView != null) spacerView.setVisibility(View.GONE);
+                }
+            }
+        }
+    }
+
     private void setViewProperties(Activity activity, String viewId, int backgroundColor) {
         int id = activity.getResources().getIdentifier(viewId, "id", activity.getPackageName());
         View view = activity.findViewById(id);
