@@ -9,8 +9,8 @@ android {
     defaultConfig {
         minSdk 22
         targetSdk 35
-        versionCode 116161
-        versionName "1.29.5beta"
+        versionCode 116162
+        versionName "1.29.6beta"
         multiDexEnabled true
 
 

@@ -429,6 +429,39 @@ public class Constants {
             ReactionList = new HookTarget("la1.k", "");
 //skipMemoryCache
             Video = new HookTarget("h88.j", "");
+        } else if (isVersionInRange(versionName, "26.7.0", "26.8.0")) {
+
+            XposedBridge.log("26.7.0 Patched ");
+
+            USER_AGENT_HOOK = new HookTarget("zf8.c", "i");
+            WEBVIEW_CLIENT_HOOK = new HookTarget("s82.j0", "onPageFinished");
+
+            MUTE_MESSAGE_HOOK = new HookTarget("sd8.b", "I");
+            MARK_AS_READ_HOOK = new HookTarget("du2.e$d", "run");
+            Archive = new HookTarget("hp1.a2", "invokeSuspend");
+
+            REQUEST_HOOK = new HookTarget("org.apache.thrift.o", "b");
+            RESPONSE_HOOK = new HookTarget("org.apache.thrift.o", "a");
+
+            RemoveVoiceRecord_Hook_a = new HookTarget("", "run");
+
+            ChatRestore = new HookTarget("androidx.fragment.app.t", "onActivityResult");
+//jp.naver.line.android.chathistory.MessageDataSearcher$getMessageData$2
+            PhotoSave = new HookTarget("ya8.i2", "");
+
+//VideoPlaybackSyncEvent(localMessageId
+            PhotoSave1 = new HookTarget("", "");
+
+            //DIRECTORY_PICTURES
+            PhotoSave2 = new HookTarget("bw2.i", "");
+
+//com.linecorp.line.album.ui.viewmodel.FeedAlbumViewModel$downloadPhotoDirectly$1
+            PhotoSave3 = new HookTarget("ei0.w1", "");
+
+            //reactionListModel
+            ReactionList = new HookTarget("pe1.a", "");
+//skipMemoryCache
+            Video = new HookTarget("", "");
         }
 
     }
