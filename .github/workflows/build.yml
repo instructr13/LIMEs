@@ -16,8 +16,6 @@ on:
         required: true
         default: false
 
-
-
 jobs:
 
   build:
@@ -29,20 +27,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set environments
+      - name: Resolve release context
+        id: ctx
         run: |
+          release_version=$(grep -m1 '^##[[:space:]]' UpdateHistory.md | sed -E 's/^##[[:space:]]+//' | tr -d '[:space:]')
+          if [ -z "$release_version" ]; then
+            echo "ERROR: failed to extract version from UpdateHistory.md (expected a leading '## <version>' heading)"
+            exit 1
+          fi
+          tag="v${release_version}"
+
+          do_release=false
+          if [ "${{ github.event.inputs.release }}" == "true" ]; then
+            do_release=true
+          elif [ "${{ github.event_name }}" == "push" ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            if git ls-remote --tags origin "refs/tags/${tag}" | grep -q "refs/tags/${tag}$"; then
+              echo "Tag ${tag} already exists on origin. Skipping release."
+            else
+              do_release=true
+            fi
+          fi
+
           {
-            echo "version=v$(grep versionName app/build.gradle | awk '{print $2}' | tr -d \")"
-            echo "line_ver_code=$(grep HOOK_TARGET_VERSION app/build.gradle | awk '{print $4}' | tr -d \'\")"
+            echo "release_version=${release_version}"
+            echo "tag=${tag}"
+            echo "do_release=${do_release}"
+            echo "repo=${GITHUB_REPOSITORY#${GITHUB_REPOSITORY_OWNER}/}"
             echo "commit=$(echo ${{ github.sha }} | cut -c-7)"
-            echo "repo=$(echo ${GITHUB_REPOSITORY#$GITHUB_REPOSITORY_OWNER/})"
-            echo "versionName=$(grep versionName app/build.gradle | awk '{print $2}' | tr -d \")"
-          } >> $GITHUB_ENV
-          
+          } >> "$GITHUB_OUTPUT"
 
+          echo "release_version=${release_version} tag=${tag} do_release=${do_release}"
 
-      - name: Set LINE Original Version Name
-        run: echo "line_ver=$(echo '${{ env.line_ver_code }}' | awk '{print substr($0,1,2)"."substr($0,3,2)"."int(substr($0,5,1))}')" >> $GITHUB_ENV
+      - name: Build release notes from UpdateHistory.md
+        if: steps.ctx.outputs.do_release == 'true'
+        run: |
+          # 先頭の "## " セクション本文（見出し行は除く、次の "## " の手前まで）を抽出
+          awk '/^## /{ if (seen) exit; seen=1; next } seen { print }' UpdateHistory.md > release_notes_body.md
+          {
+            echo ""
+            echo "## パッチ配布対象の LINE バージョン"
+            jq -r '.[] | "- LINE \(.line_version) (\(.abi))"' .github/line-targets.json
+            echo ""
+            echo "> 上記はプリパッチ APK を同梱した LINE のバージョンです。モジュール自体の動作対応範囲は app/src/main/java/io/github/hiro/lime/hooks/Constants.java を参照してください。"
+            echo ""
+            echo "### 差分"
+            echo "https://github.com/${{ github.repository }}/compare/${{ steps.ctx.outputs.tag }}^...${{ steps.ctx.outputs.tag }}"
+          } >> release_notes_body.md
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -54,7 +84,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Release check
-        if: github.event.inputs.release == 'true'
+        if: steps.ctx.outputs.do_release == 'true'
         run: |
           if [ "${{ secrets.STORE_FILE }}" == "" ]; then
             echo -e "\nERROR!\nTo release, you need to set up a signing key!\n"
@@ -65,82 +95,71 @@ jobs:
             echo ""
             exit 1
           fi
-          if [ "${{ steps.previous.outputs.tag }}" == "${{ env.versionName }}" ]; then
-            echo -e "\nERROR!\nThe same tag already exists!\n"
-            echo "Please change versionName in build.gradle"
-            echo ""
-            exit 1
-          fi
 
-      - name: Download Required APKs
-        if: github.event.inputs.release == 'true'
+      - name: Apply release version to build.gradle
+        if: steps.ctx.outputs.do_release == 'true'
         run: |
-          curl -L -o LINE-15.5.4-arm64-v8a.armeabi-v7a.apk https://github.com/areteruhiro/LIMEs/releases/download/15.5.4/15.4.4arm64-v8a.+.arm-v7a.apk
-          curl -L -o LINE-15-5-4-armeabi-v7a.apk https://github.com/areteruhiro/LIMEs/releases/download/15.5.4/15.4.4arm-v7a.apk
-          curl -L -o LINE-15-9-3-armeabi-v7a.apk https://github.com/areteruhiro/LIMEs/releases/download/15.9.3/15.9.3_armeabi-v7a.apk
-          curl -L -o LINE-15.9.3-arm64-v8a.apk https://github.com/areteruhiro/LIMEs/releases/download/15.9.3/line-15-9-3arm64-v8a.apk
-      - name: Download LSPatch
-        if: github.event.inputs.release == 'true'
-        run: |
-          curl -L -o lspatch.jar https://github.com/JingMatrix/LSPatch/releases/download/v0.7/lspatch.jar
+          version_code=$((116161 + ${{ github.run_number }}))
+          sed -i -E "s/versionCode[[:space:]]+[0-9]+/versionCode ${version_code}/" app/build.gradle
+          sed -i -E "s/versionName[[:space:]]+\"[^\"]*\"/versionName \"${{ steps.ctx.outputs.release_version }}\"/" app/build.gradle
+          grep -E 'versionCode|versionName' app/build.gradle
 
       - name: Build with Gradle
         run: |
-          if [ "${{ github.event.inputs.release }}" == "true" ]; then
+          if [ "${{ steps.ctx.outputs.do_release }}" == "true" ]; then
             echo "${{ secrets.STORE_FILE }}" | base64 -d > app/release.jks
             export STORE_PASSWORD="${{ secrets.STORE_PASSWORD }}"
             export KEY_ALIAS="${{ secrets.KEY_ALIAS }}"
             export KEY_PASSWORD="${{ secrets.KEY_PASSWORD }}"
             ./gradlew assembleRelease --no-daemon --stacktrace
-            cp -f app/build/outputs/apk/release/app-release.apk ${{ env.repo }}-${{ env.version }}.apk
+            cp -f app/build/outputs/apk/release/app-release.apk "${{ steps.ctx.outputs.repo }}-${{ steps.ctx.outputs.tag }}.apk"
           else
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
-      - name: LSPatch
 
-        if: github.event.inputs.release == 'true'
+      - name: Download LSPatch
+        if: steps.ctx.outputs.do_release == 'true'
+        run: curl -L -o lspatch.jar https://github.com/JingMatrix/LSPatch/releases/download/v0.7/lspatch.jar
+
+      - name: Patch LINE APKs
+        if: steps.ctx.outputs.do_release == 'true'
         run: |
-          for file in LINE-15.5.4-arm64-v8a.armeabi-v7a.apk LINE-15-5-4-armeabi-v7a.apk LINE-15-9-3-armeabi-v7a.apk LINE-15.9.3-arm64-v8a.apk ; do
-          
-            echo "Patching $file..."
-            java -jar lspatch.jar "$file" -m "${{ env.repo }}-${{ env.version }}.apk" -l 2 -v
+          module_apk="${{ steps.ctx.outputs.repo }}-${{ steps.ctx.outputs.tag }}.apk"
+          jq -c '.[]' .github/line-targets.json | while read -r entry; do
+            url=$(echo "$entry" | jq -r '.download_url')
+            local_name=$(echo "$entry" | jq -r '.local_name')
 
-            # Determine the expected output file name
-            output_file="${file%.apk}-430-lspatched.apk"
+            echo "Downloading ${local_name} from ${url}"
+            curl -L -o "$local_name" "$url"
 
-            # List the current directory to see what files are present
-            echo "Current directory contents after patching:"
-            ls -l
+            echo "Patching ${local_name} ..."
+            rm -f ./*-lspatched.apk
+            java -jar lspatch.jar "$local_name" -m "$module_apk" -l 2 -v
 
-            # Move the patched file using the correct naming convention
-            mv "$output_file" "Patched_${{ env.version }}_$file" || echo "Patched file not found for $file"
+            patched=$(ls ./*-lspatched.apk 2>/dev/null | head -n1)
+            if [ -z "$patched" ]; then
+              echo "ERROR: lspatch produced no output for ${local_name}"
+              exit 1
+            fi
+            mv "$patched" "Patched_${{ steps.ctx.outputs.tag }}_${local_name}"
           done
-          
+          echo "Patched artifacts:"
+          ls -l Patched_* || true
 
       - name: Upload module (Debug)
         uses: actions/upload-artifact@v4
-        if: github.event.inputs.release != 'true' 
+        if: steps.ctx.outputs.do_release != 'true'
         with:
-          name: ${{ env.repo }}-${{ env.versionName }}@${{ env.commit }}
+          name: ${{ steps.ctx.outputs.repo }}-${{ steps.ctx.outputs.release_version }}@${{ steps.ctx.outputs.commit }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: github.event.inputs.release == 'true'
+        if: steps.ctx.outputs.do_release == 'true'
         with:
-          tag_name: ${{ env.version }}
+          tag_name: ${{ steps.ctx.outputs.tag }}
+          body_path: release_notes_body.md
           files: |
-            ${{ env.repo }}-${{ env.version }}.apk
-            Patched_${{ env.version }}_LINE-15.5.4-arm64-v8a.armeabi-v7a.apk
-            Patched_${{ env.version }}_LINE-15-5-4-armeabi-v7a.apk
-            Patched_${{ env.version }}_LINE-15-9-3-armeabi-v7a.apk
-            Patched_${{ env.version }}_LINE-15.9.3-arm64-v8a.apk
-          body: |
-            # 更新内容
-            [UpdateHistory.md](https://github.com/areteruhiro/LIMEs/blob/master/UpdateHistory.md)
-            ## 対応するLINEのバージョン
-            14.19.1 <br>14.21.1 <br>15.0.0  <br>15.1.X <br>15.2.1 <br>15.3.X <br> 15.4.0-15.4.1<br>15.5.1 -15.5.4 <br>15.6.x <br>15.7.x(Maybe) <br>15.9.2 - 19.2.3(Maybe)
-
-            ### 差分
-            https://github.com/${{ github.repository }}/compare/${{ env.version }}^...${{ env.version }}
+            ${{ steps.ctx.outputs.repo }}-${{ steps.ctx.outputs.tag }}.apk
+            Patched_${{ steps.ctx.outputs.tag }}_*.apk
