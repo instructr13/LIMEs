@@ -10,11 +10,6 @@ on:
         type: boolean
         required: true
         default: false
-      lspatch:
-        description: 'LSPatch'
-        type: boolean
-        required: true
-        default: false
 
 jobs:
 
@@ -25,7 +20,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve release context
         id: ctx
@@ -63,25 +58,15 @@ jobs:
         run: |
           # 先頭の "## " セクション本文（見出し行は除く、次の "## " の手前まで）を抽出
           awk '/^## /{ if (seen) exit; seen=1; next } seen { print }' UpdateHistory.md > release_notes_body.md
-          {
-            echo ""
-            echo "## パッチ配布対象の LINE バージョン"
-            jq -r '.[] | "- LINE \(.line_version) (\(.abi))"' .github/line-targets.json
-            echo ""
-            echo "> 上記はプリパッチ APK を同梱した LINE のバージョンです。モジュール自体の動作対応範囲は app/src/main/java/io/github/hiro/lime/hooks/Constants.java を参照してください。"
-            echo ""
-            echo "### 差分"
-            echo "https://github.com/${{ github.repository }}/compare/${{ steps.ctx.outputs.tag }}^...${{ steps.ctx.outputs.tag }}"
-          } >> release_notes_body.md
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: 21
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Release check
         if: steps.ctx.outputs.do_release == 'true'
@@ -117,35 +102,6 @@ jobs:
             ./gradlew assembleDebug --no-daemon --stacktrace
           fi
 
-      - name: Download LSPatch
-        if: steps.ctx.outputs.do_release == 'true'
-        run: curl -L -o lspatch.jar https://github.com/JingMatrix/LSPatch/releases/download/v0.7/lspatch.jar
-
-      - name: Patch LINE APKs
-        if: steps.ctx.outputs.do_release == 'true'
-        run: |
-          module_apk="${{ steps.ctx.outputs.repo }}-${{ steps.ctx.outputs.tag }}.apk"
-          jq -c '.[]' .github/line-targets.json | while read -r entry; do
-            url=$(echo "$entry" | jq -r '.download_url')
-            local_name=$(echo "$entry" | jq -r '.local_name')
-
-            echo "Downloading ${local_name} from ${url}"
-            curl -L -o "$local_name" "$url"
-
-            echo "Patching ${local_name} ..."
-            rm -f ./*-lspatched.apk
-            java -jar lspatch.jar "$local_name" -m "$module_apk" -l 2 -v
-
-            patched=$(ls ./*-lspatched.apk 2>/dev/null | head -n1)
-            if [ -z "$patched" ]; then
-              echo "ERROR: lspatch produced no output for ${local_name}"
-              exit 1
-            fi
-            mv "$patched" "Patched_${{ steps.ctx.outputs.tag }}_${local_name}"
-          done
-          echo "Patched artifacts:"
-          ls -l Patched_* || true
-
       - name: Upload module (Debug)
         uses: actions/upload-artifact@v4
         if: steps.ctx.outputs.do_release != 'true'
@@ -162,4 +118,3 @@ jobs:
           body_path: release_notes_body.md
           files: |
             ${{ steps.ctx.outputs.repo }}-${{ steps.ctx.outputs.tag }}.apk
-            Patched_${{ steps.ctx.outputs.tag }}_*.apk
